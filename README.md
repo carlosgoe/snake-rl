@@ -1,6 +1,6 @@
 # snake-rl
 
-An Python implementation of Snake that can be run in a Jupyter notebook (with or without UI) and eventually serves as a reinforcement learning environment. 
+A Python implementation of Snake that can be run in a Jupyter notebook (with or without UI) and eventually serves as a reinforcement learning environment. 
 
 Policy gradient and deep Q learning algorithms (implemented with TensorFlow and Keras) are used to train an agent to play the game. The neural network configuration can be saved as a .h5 file.
 
