@@ -17,27 +17,34 @@ def discount_and_normalize_rewards(all_rewards, discount_rate):
         all_discounted_rewards.append(discounted_rewards)
     # Make all_discounted_rewards one dimensional
     flat_rewards = np.concatenate(all_discounted_rewards)
+    # Get mean and standard deviation of all_discounted_rewards
+    rewards_mean = flat_rewards.mean()
+    rewards_std = flat_rewards.std()
     # Return normalized version of all_discounted_rewards
-    return [(discounted_rewards - flat_rewards.mean()) / flat_rewards.std() for discounted_rewards in all_discounted_rewards]
+    return [(discounted_rewards - rewards_mean) / rewards_std for discounted_rewards in all_discounted_rewards]
 
 
 def multinomial(probs, invalid=[]):
     # Remove invalid actions from possible actions
     actions = list(set(range(max(2, probs.shape[1]))) - set(invalid))
-    # if output size is 1: select action by generating random float and comparing it to model output
+    # Two possible actions and only one action is valid: select that one
     if probs.shape[1] == 1 and len(actions) == 1:
-        return actions[0]
-    if probs.shape[1] == 1:
-        action = tf.random.uniform([1, 1]) > probs
-        return action, tf.constant([[1.]]) - tf.cast(action, tf.float32)
-    # Multinomial selection if output size > 0
-    probs_c = np.copy(probs)
-    if probs.shape[1] > len(actions):
-        # Set probability of actions that are not in given list to 0
-        probs_c[0, invalid] = 0.
-        probs_c = probs_c / np.sum(probs_c)
-    one_hot = tf.cast(tfp.distributions.Multinomial(1., probs=probs_c[0]).sample(1), tf.float32)
-    return tf.math.argmax(one_hot[0]), one_hot
+        action = actions[0]
+        y_target = tf.constant([actions])
+    # Two possible actions and both are valid: randomly select action by comparing to random float (between 0 and 1)
+    elif probs.shape[1] == 1:
+        y_target = tf.random.uniform([1, 1]) < probs
+        action = int(y_target.numpy()[0, 0])
+    # More than two possible actions: use multinomial selection
+    else:
+        probs_c = np.copy(probs)
+        # If there are invalid actions: set their probability to be selected to 0
+        if probs.shape[1] > len(actions):
+            probs_c[0, invalid] = 0.
+            probs_c = probs_c / np.sum(probs_c)
+        y_target = tfp.distributions.Multinomial(1., probs=probs_c[0]).sample(1)
+        action = np.argmax(y_target.numpy()[0])
+    return action, tf.cast(y_target, tf.float32)
 
 
 class PG(Agent):
@@ -55,7 +62,7 @@ class PG(Agent):
             # Calculate loss with one-hot encoded action as target
             loss = tf.reduce_mean(self.loss_fn(y_target, pred))
         # Return action as integer and the gradient that would make it more likely
-        return int(np.max(action.numpy().flatten())), tape.gradient(loss, self.model.trainable_variables)
+        return action, tape.gradient(loss, self.model.trainable_variables)
 
     def apply_grads(self, all_rewards, all_grads, discount=True):
         # Get discounted and normalized rewards
